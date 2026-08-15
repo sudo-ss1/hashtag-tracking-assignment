@@ -6,6 +6,10 @@ export * from './types.js';
 const FIELDS = 'id,media_type,timestamp,permalink,media_url,caption,like_count,comments_count';
 const MIN_PAGE_SIZE = 1;
 const MAX_ATTEMPTS_PER_PAGE = 5;
+// Belt-and-braces cap on total iterations (halvings + attempts) per page, so a
+// pathological server response can never spin the loop forever even if the
+// attempt/halving accounting above has a bug.
+const MAX_ITERATIONS_PER_PAGE = 64;
 
 export class GraphApiError extends Error {
   constructor(message: string, readonly code?: number, readonly status?: number) {
@@ -51,27 +55,76 @@ export class InstagramClient {
 
     while (pages < opts.maxPages && items.length < opts.maxItems) {
       let page: GraphPage | undefined;
+      let lastError: GraphApiError | undefined;
+      let attempt = 0;
+      let iterations = 0;
 
-      for (let attempt = 0; attempt < MAX_ATTEMPTS_PER_PAGE; attempt++) {
-        const res = await this.fetchImpl(this.url(opts.hashtagId, opts.source, pageSize, after));
-        const body = (await res.json()) as GraphPage & { error?: { code?: number; message?: string } };
+      // A `for` loop's `continue` auto-increments the counter, which would make a
+      // code:1 halving consume retry budget it shouldn't. Use `while` so halving
+      // (a bare `continue`) and attempt-consuming backoff are decoupled: only the
+      // 5xx/429/network/non-JSON branches below advance `attempt`.
+      while (attempt < MAX_ATTEMPTS_PER_PAGE) {
+        iterations++;
+        if (iterations > MAX_ITERATIONS_PER_PAGE) {
+          throw (
+            lastError ??
+            new GraphApiError(
+              `Exceeded iteration cap for ${opts.source}_media page ${pages + 1} at page size ${pageSize}`,
+            )
+          );
+        }
+
+        let res: Response;
+        try {
+          res = await this.fetchImpl(this.url(opts.hashtagId, opts.source, pageSize, after));
+        } catch (err) {
+          // Network-level failure. The message may embed the request URL (and the token).
+          lastError = new GraphApiError(`network error: ${(err as Error).message}`);
+          await this.sleep(this.backoffMs * 2 ** attempt * (1 + Math.random()));
+          attempt++;
+          continue;
+        }
+
+        let body: GraphPage & { error?: { code?: number; message?: string } };
+        try {
+          body = (await res.json()) as GraphPage & { error?: { code?: number; message?: string } };
+        } catch {
+          // Non-JSON body (e.g. an HTML gateway error page). Retryable, not fatal.
+          lastError = new GraphApiError(`non-JSON response (HTTP ${res.status})`, undefined, res.status);
+          await this.sleep(this.backoffMs * 2 ** attempt * (1 + Math.random()));
+          attempt++;
+          continue;
+        }
 
         if (res.ok && !body.error) { page = body; break; }
 
         const code = body.error?.code;
-        // code:1 is Meta shedding load at this page size — shrink and retry.
+        const message = body.error?.message ?? `Graph request failed (${res.status})`;
+
+        // code:1 is Meta shedding load at this page size — shrink and retry. This
+        // is progress, not a failed attempt, so it must not consume the budget.
         if (code === 1 && pageSize > MIN_PAGE_SIZE) {
           pageSize = Math.max(MIN_PAGE_SIZE, Math.floor(pageSize / 2));
+          lastError = new GraphApiError(message, code, res.status);
           continue;
         }
         if (res.status >= 500 || res.status === 429) {
+          lastError = new GraphApiError(message, code, res.status);
           await this.sleep(this.backoffMs * 2 ** attempt * (1 + Math.random()));
+          attempt++;
           continue;
         }
-        throw new GraphApiError(body.error?.message ?? `Graph request failed (${res.status})`, code, res.status);
+        throw new GraphApiError(message, code, res.status);
       }
 
-      if (!page) throw new GraphApiError(`Exhausted retries for ${opts.source}_media page ${pages + 1}`);
+      if (!page) {
+        const cause = lastError?.message ?? 'unknown error';
+        throw new GraphApiError(
+          `Exhausted retries for ${opts.source}_media page ${pages + 1} at page size ${pageSize}: ${cause}`,
+          lastError?.code,
+          lastError?.status,
+        );
+      }
 
       pages++;
       const batch = page.data ?? [];

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { InstagramClient } from './client.js';
+import { config } from '../../config/index.js';
 
 const media = (id: string) => ({
   id, media_type: 'IMAGE', timestamp: '2026-08-13T15:13:39+0000', permalink: `https://x/${id}`,
@@ -85,5 +86,60 @@ describe('InstagramClient', () => {
     const client = new InstagramClient({ fetchImpl, initialPageSize: 8, backoffMs: 0 });
     await client.fetchHashtagMedia({ hashtagId: 'h', source: 'top', maxItems: 50, maxPages: 5 });
     expect(limits).toEqual([8, 4, 4]);   // does not climb back to 8
+  });
+
+  it('halves all the way down to the floor page size before giving up', async () => {
+    const limits: number[] = [];
+    const fetchImpl = vi.fn(async (url: string) => {
+      limits.push(Number(new URL(url).searchParams.get('limit')));
+      return jsonResponse({ error: { code: 1, message: 'Please reduce the amount of data' } }, 500);
+    }) as unknown as typeof fetch;
+
+    const client = new InstagramClient({ fetchImpl, initialPageSize: 50, backoffMs: 0 });
+
+    await expect(
+      client.fetchHashtagMedia({ hashtagId: 'h', source: 'top', maxItems: 50, maxPages: 5 }),
+    ).rejects.toThrow();
+
+    // Halving must strictly reduce toward the floor and actually be attempted at
+    // size 1 before the call gives up — the retry budget must not be exhausted
+    // purely by halving (50 -> 25 -> 12 -> 6 -> 3 -> 1).
+    expect(limits.at(-1)).toBe(1);
+  });
+
+  it('redacts the access token when the network request itself rejects', async () => {
+    const token = config.ig.accessToken;
+    const fetchImpl = vi.fn(async () => {
+      throw new Error(
+        `connect ECONNREFUSED https://graph.facebook.com/v25.0/h/top_media?access_token=${token}`,
+      );
+    }) as unknown as typeof fetch;
+
+    const client = new InstagramClient({ fetchImpl, initialPageSize: 9, backoffMs: 0 });
+
+    let caught: Error | undefined;
+    try {
+      await client.fetchHashtagMedia({ hashtagId: 'h', source: 'top', maxItems: 50, maxPages: 5 });
+    } catch (err) {
+      caught = err as Error;
+    }
+
+    expect(caught).toBeDefined();
+    expect(caught!.message).not.toContain(token);
+    expect(caught!.message).toContain('***REDACTED***');
+  });
+
+  it('retries on a non-JSON response body instead of crashing', async () => {
+    let call = 0;
+    const fetchImpl = vi.fn(async () => {
+      call++;
+      if (call === 1) return new Response('<html>502 Bad Gateway</html>', { status: 502 });
+      return jsonResponse({ data: [media('a')] });
+    }) as unknown as typeof fetch;
+
+    const client = new InstagramClient({ fetchImpl, initialPageSize: 9, backoffMs: 0 });
+    const res = await client.fetchHashtagMedia({ hashtagId: 'h', source: 'top', maxItems: 50, maxPages: 5 });
+
+    expect(res.items).toHaveLength(1);
   });
 });
