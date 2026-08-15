@@ -304,6 +304,41 @@ That review process caught and fixed several material defects, including:
   keep retrying against a CDN URL that had already expired by the time of
   the retry.
 
+### What I did myself
+
+- **Established the API's real behaviour before any code existed.** I ran the
+  assignment's own `curl` commands against the live Graph API and found that
+  the suggested `limit=25` returns `HTTP 500 code:1`. I binary-searched the
+  boundary per endpoint — `top_media` serves `limit=9` and fails at `10`,
+  `recent_media` tolerates more — and found the ceilings had moved when I
+  re-measured minutes later. I also noticed responses come back tagged
+  `facebook-api-version: v25.0` even when `v24.0` is requested, which is why
+  the client pins `v25.0` explicitly. Those measurements, not the
+  documentation, drove the adaptive page-size client, the nullable columns,
+  and the separate `unavailable` asset state.
+
+- **Chose and provisioned the infrastructure.** AWS SQS and S3, with the
+  local in-memory and disk drivers kept fully working so the project runs
+  without credentials — which is what makes the swappable-adapter
+  requirement demonstrable rather than asserted.
+
+- **Directed the review and verified the results against the live system.**
+  Every finding was checked against the real database or the real API before
+  being accepted — a claim that an index was unused, for example, was
+  disproved by running `EXPLAIN ANALYZE`. Two statements I had written into
+  this file turned out to be false when queried and were corrected rather
+  than left standing; both are still recorded below under `tradeoffs`
+  (items 10 and 15).
+
+- **Ran the pipeline against the live API and verified the output myself** —
+  media rows in Postgres, asset files on disk matching the database count,
+  and `GET /hashtags` returning resolvable `assetUrl`s.
+
+- **Set the engineering standards the work had to meet**: one query per
+  request on the read path (now enforced by a regression test), tests that
+  stay green with live data present, and a commit history where every commit
+  ends in a passing suite.
+
 `ai-usage/README.md` describes the method in more detail, including the
 defects the review process caught and how each was verified before being
 accepted.

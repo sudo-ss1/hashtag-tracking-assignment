@@ -7,6 +7,13 @@ serves the result through one paginated `GET /hashtags` endpoint.
 Full setup instructions, every environment variable, and the reasoning behind
 each design decision are in [`instructions.md`](./instructions.md).
 
+**If you have five minutes**, the three things worth reading are
+[what the Meta API actually does](#three-things-the-meta-api-actually-does-not-what-the-docs-suggest)
+below — every design decision here follows from measuring it rather than
+trusting the docs — the `tradeoffs` section of
+[`instructions.md`](./instructions.md), and `test/e2e/pipeline.test.ts`,
+which drives the whole pipeline end to end with no network calls.
+
 ## Architecture
 
 ```
