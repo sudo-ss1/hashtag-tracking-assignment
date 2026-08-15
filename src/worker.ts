@@ -15,7 +15,7 @@ async function main() {
 
   await pool.query('SELECT 1');
   console.log('[worker] database ok');
-  startScheduler(queue);
+  const cronTask = startScheduler(queue);
 
   if (process.env.SYNC_ON_BOOT) {
     const source = process.env.SYNC_ON_BOOT === 'recent' ? 'SYNC_RECENT_MEDIA' : 'SYNC_TOP_MEDIA';
@@ -44,6 +44,8 @@ async function main() {
     }
   }
 
+  await cronTask.stop();
+  await cronTask.destroy();
   await pool.end();
   console.log('[worker] stopped');
 }

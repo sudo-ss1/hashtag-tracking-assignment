@@ -55,6 +55,7 @@ export class InstagramClient {
     onPage?: (items: IgMedia[]) => Promise<void>;
   }): Promise<{ items: IgMedia[]; pages: number }> {
     const items: IgMedia[] = [];
+    const startPageSize = this.initialPageSize;
     let pageSize = this.initialPageSize;
     let after: string | undefined;
     let pages = 0;
@@ -110,7 +111,9 @@ export class InstagramClient {
         // code:1 is Meta shedding load at this page size — shrink and retry. This
         // is progress, not a failed attempt, so it must not consume the budget.
         if (code === 1 && pageSize > MIN_PAGE_SIZE) {
-          pageSize = Math.max(MIN_PAGE_SIZE, Math.floor(pageSize / 2));
+          const reduced = Math.max(MIN_PAGE_SIZE, Math.floor(pageSize / 2));
+          console.warn(`[ig] ${opts.source}_media: Meta returned code:1 at limit=${pageSize}; reducing to ${reduced}`);
+          pageSize = reduced;
           lastError = new GraphApiError(message, code, res.status);
           continue;
         }
@@ -144,6 +147,10 @@ export class InstagramClient {
       if (!after || batch.length === 0) break;
     }
 
+    console.log(
+      `[ig] ${opts.source}_media: fetched ${pages} page(s), ${items.length} item(s); ` +
+      `page size ${startPageSize} -> ${pageSize}`,
+    );
     return { items, pages };
   }
 
