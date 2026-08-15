@@ -22,4 +22,41 @@ describe('InMemoryQueue', () => {
     expect((await q.receive(2)).length).toBe(2);
     expect((await q.receive(10)).length).toBe(3);
   });
+
+  it('does not redeliver a received-but-unacked message before the visibility timeout elapses', async () => {
+    let clock = 0;
+    const q = new InMemoryQueue(() => clock);
+    await q.enqueue('DOWNLOAD_ASSET', { mediaId: 1 });
+    const first = await q.receive(10);
+    expect(first.length).toBe(1);
+
+    clock += 29_999; // just under the 30s visibility timeout
+    const second = await q.receive(10);
+    expect(second.length).toBe(0);
+  });
+
+  it('redelivers a received-but-unacked message after the visibility timeout elapses', async () => {
+    let clock = 0;
+    const q = new InMemoryQueue(() => clock);
+    await q.enqueue('DOWNLOAD_ASSET', { mediaId: 1 });
+    const first = await q.receive(10);
+    expect(first.length).toBe(1);
+
+    clock += 30_000; // exactly at the visibility timeout
+    const second = await q.receive(10);
+    expect(second.length).toBe(1);
+    expect((second[0]!.payload as any).mediaId).toBe(1);
+  });
+
+  it('never redelivers an acked message', async () => {
+    let clock = 0;
+    const q = new InMemoryQueue(() => clock);
+    await q.enqueue('DOWNLOAD_ASSET', { mediaId: 1 });
+    const [msg] = await q.receive(10);
+    await q.ack(msg!);
+
+    clock += 60_000; // well past the visibility timeout
+    const second = await q.receive(10);
+    expect(second.length).toBe(0);
+  });
 });

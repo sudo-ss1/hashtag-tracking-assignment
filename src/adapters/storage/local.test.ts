@@ -23,4 +23,9 @@ describe('LocalStorage', () => {
     const s = new LocalStorage(dir);
     await expect(s.exists('../../etc/passwd')).rejects.toThrow(/invalid key/i);
   });
+
+  it('rejects absolute-path keys', async () => {
+    const s = new LocalStorage(dir);
+    await expect(s.exists('/etc/passwd')).rejects.toThrow(/invalid key/i);
+  });
 });
