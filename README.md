@@ -54,6 +54,26 @@ They're separate processes because they scale on different axes and fail
 independently: a wedged download must not be able to take the read API down
 with it.
 
+## Swappable queue and storage
+
+`Queue` and `Storage` are interfaces with **two working implementations
+each**, selected by environment variable — no code changes to switch:
+
+| Interface | `sqs` / `s3` | `memory` / `local` |
+|---|---|---|
+| `Queue` | AWS SQS, `SendMessageBatch` in chunks of 10, delete only on success | in-process, with a visibility timeout so an unacked message redelivers exactly as SQS does |
+| `Storage` | S3, presigned GET on read so the bucket stays private | disk, served at `/assets/:key` |
+
+Both pairs are real, and both were verified against a live SQS queue and S3
+bucket (`scripts/aws-smoke.ts` runs that check against your own resources).
+Shipping two working implementations rather than one plus a stub is the only
+way to show the seam actually holds — and the local pair is what lets this
+project run with no AWS account at all.
+
+The in-memory queue deliberately mirrors SQS's redelivery semantics rather
+than being a simple array: otherwise the retry path could never be exercised
+locally, and untested retry logic is the kind that fails in production.
+
 ## Two-stage job design
 
 `SYNC_TOP_MEDIA` / `SYNC_RECENT_MEDIA` page the Graph API, upsert media

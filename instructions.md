@@ -123,7 +123,7 @@ gitignored.
 | `SYNC_MAX_PAGES` | Hard cap on pages fetched per sync run, independent of `SYNC_MAX_ITEMS` (guards against a pathological cursor loop). | No | `120` |
 | `QUEUE_DRIVER` | Selects the `Queue` implementation: `sqs` (AWS) or `memory` (in-process, for local runs with no AWS account). | No | `memory` |
 | `STORAGE_DRIVER` | Selects the `Storage` implementation: `s3` (AWS) or `local` (disk, served via `/assets/:key`). | No | `local` |
-| `AWS_REGION` | AWS region for both SQS and S3 clients. | No (required in practice if `QUEUE_DRIVER=sqs` or `STORAGE_DRIVER=s3`) | `ap-south-1` |
+| `AWS_REGION` | AWS region for both SQS and S3 clients. | No (required in practice if `QUEUE_DRIVER=sqs` or `STORAGE_DRIVER=s3`) | `eu-west-1` |
 | `SQS_QUEUE_URL` | SQS queue URL. **Required when `QUEUE_DRIVER=sqs`** — config validation (zod, at boot) fails startup if it is missing in that case. | Conditional | none |
 | `S3_BUCKET` | S3 bucket name. **Required when `STORAGE_DRIVER=s3`** — config validation fails startup if it is missing in that case. | Conditional | none |
 | `S3_PREFIX` | Key prefix under which assets are written in S3 (driver-independent — see `tradeoffs`). | No | `hashtag-media` |
