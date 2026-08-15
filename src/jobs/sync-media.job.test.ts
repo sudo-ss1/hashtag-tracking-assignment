@@ -1,11 +1,15 @@
-import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest';
 import { pool, withTransaction } from '../db/pool.js';
 import { upsertMedia, linkHashtagMedia } from '../db/repositories/media.repository.js';
 import * as mediaRepo from '../db/repositories/media.repository.js';
-import { getHashtagByName } from '../db/repositories/hashtag.repository.js';
 import { runSyncMedia } from './sync-media.job.js';
 
-const hashtagName = 'matcha'; // seeded by the init migration; must not be deleted
+// Dedicated hashtag for these tests. `runSyncMedia` unconditionally reclaims
+// stale pending media for the hashtag it's given, and live syncs leave real
+// pending/stored rows under 'matcha' — using a separate hashtag keeps that
+// live data out of the reclaim sweep and out of these assertions entirely.
+const hashtagName = 'sync-test-tag';
+let testHashtagId: number;
 
 const media = (id: string, permalink: string | null) => ({
   id, media_type: 'IMAGE', timestamp: '2026-08-14T18:44:40+0000', permalink,
@@ -22,9 +26,20 @@ function fakeQueue() {
   };
 }
 
+beforeAll(async () => {
+  const { rows } = await pool.query(
+    `INSERT INTO hashtags (ig_hashtag_id, name) VALUES ('sync-test-hashtag-id', $1)
+     ON CONFLICT (ig_hashtag_id) DO UPDATE SET ig_hashtag_id = EXCLUDED.ig_hashtag_id
+     RETURNING id`,
+    [hashtagName],
+  );
+  testHashtagId = Number(rows[0].id);
+});
+
 beforeEach(async () => { await pool.query(`DELETE FROM media WHERE ig_media_id LIKE 'sync-test-%'`); });
 afterAll(async () => {
   await pool.query(`DELETE FROM media WHERE ig_media_id LIKE 'sync-test-%'`);
+  await pool.query(`DELETE FROM hashtags WHERE ig_hashtag_id = 'sync-test-hashtag-id'`);
   await pool.end();
 });
 
@@ -70,13 +85,12 @@ describe('runSyncMedia', () => {
   });
 
   it('re-enqueues a media row left pending with no job on the next sync run', async () => {
-    const hashtag = await getHashtagByName(hashtagName);
     const { id: mediaId } = await withTransaction((c) =>
       upsertMedia(c, {
         id: 'sync-test-orphan', media_type: 'IMAGE', timestamp: '2026-08-14T18:44:40+0000',
         permalink: 'https://x/orphan', media_url: 'https://cdn/orphan.jpg',
       } as any));
-    await withTransaction((c) => linkHashtagMedia(c, hashtag!.id, mediaId, 'top'));
+    await withTransaction((c) => linkHashtagMedia(c, testHashtagId, mediaId, 'top'));
     // asset_status defaults to 'pending' — simulates a row whose enqueueBatch call
     // failed after the page committed, so no DOWNLOAD_ASSET job was ever sent.
 
