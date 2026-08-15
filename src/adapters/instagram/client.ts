@@ -46,6 +46,12 @@ export class InstagramClient {
     source: MediaSource;
     maxItems: number;
     maxPages: number;
+    /**
+     * Called with each page's accepted items, awaited before the next page is fetched.
+     * If it throws, fetchHashtagMedia rejects and returns NO partial result — callers
+     * must treat onPage as the durable side effect (rows are committed per page), not
+     * rely on the returned items[] on failure.
+     */
     onPage?: (items: IgMedia[]) => Promise<void>;
   }): Promise<{ items: IgMedia[]; pages: number }> {
     const items: IgMedia[] = [];
