@@ -61,4 +61,19 @@ describe('upsertMedia', () => {
     await markAssetStored(id, 'media/y.jpg', 'image/jpeg', 1);
     expect(await claimForDownload(id)).toBeNull();
   });
+
+  it('a fresh media_url replaces a stale one', async () => {
+    const { id } = await withTransaction((c) => upsertMedia(c, { ...item, media_url: 'https://cdn/old.jpg' }));
+    await withTransaction((c) => upsertMedia(c, { ...item, media_url: 'https://cdn/new.jpg' }));
+    const { rows } = await pool.query('SELECT source_media_url FROM media WHERE id=$1', [id]);
+    expect(rows[0].source_media_url).toBe('https://cdn/new.jpg');
+  });
+
+  it('a missing media_url does not clobber a previously stored one', async () => {
+    const { id } = await withTransaction((c) => upsertMedia(c, { ...item, media_url: 'https://cdn/keep.jpg' }));
+    const { media_url: _omit, ...withoutUrl } = { ...item, media_url: 'https://cdn/keep.jpg' };
+    await withTransaction((c) => upsertMedia(c, withoutUrl));
+    const { rows } = await pool.query('SELECT source_media_url FROM media WHERE id=$1', [id]);
+    expect(rows[0].source_media_url).toBe('https://cdn/keep.jpg');
+  });
 });

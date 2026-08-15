@@ -8,12 +8,13 @@ export async function upsertMedia(client: PoolClient, item: IgMedia): Promise<{ 
                         like_count, comments_count, source_media_url, raw)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
      ON CONFLICT (ig_media_id) DO UPDATE SET
-       caption        = EXCLUDED.caption,
-       like_count     = EXCLUDED.like_count,
-       comments_count = EXCLUDED.comments_count,
-       raw            = EXCLUDED.raw,
-       last_seen_at   = now(),
-       updated_at     = now()
+       caption          = EXCLUDED.caption,
+       like_count       = EXCLUDED.like_count,
+       comments_count   = EXCLUDED.comments_count,
+       source_media_url = COALESCE(EXCLUDED.source_media_url, media.source_media_url),
+       raw              = EXCLUDED.raw,
+       last_seen_at     = now(),
+       updated_at       = now()
      RETURNING id, (xmax = 0) AS inserted`,
     [
       item.id, item.media_type, item.caption ?? null, item.permalink, item.timestamp,
