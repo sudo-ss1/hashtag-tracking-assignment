@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest';
 import { pool, withTransaction } from '../db/pool.js';
 import { upsertMedia, linkHashtagMedia } from '../db/repositories/media.repository.js';
+import * as mediaRepo from '../db/repositories/media.repository.js';
 import { getHashtagByName } from '../db/repositories/hashtag.repository.js';
 import { runSyncMedia } from './sync-media.job.js';
 
@@ -86,5 +87,73 @@ describe('runSyncMedia', () => {
 
     const reclaimedIds = queue.calls.map((e) => e.payload.mediaId);
     expect(reclaimedIds).toContain(mediaId);
+  });
+
+  it('does not accumulate subtransaction locks when a later statement in an item fails', async () => {
+    // upsertMedia (the item's FIRST statement) always succeeds here; linkHashtagMedia
+    // (a LATER statement) is forced to throw for the middle two items. This is the
+    // exact shape that burns a Postgres subtransaction id: without RELEASE SAVEPOINT
+    // immediately after ROLLBACK TO SAVEPOINT, the aborted subxact keeps its own
+    // transactionid lock alive for the life of the outer transaction.
+    const items = [
+      media('sync-test-lock-1', 'https://x/1'),
+      media('sync-test-lock-2', 'https://x/2'), // linkHashtagMedia forced to throw
+      media('sync-test-lock-3', 'https://x/3'), // linkHashtagMedia forced to throw
+      media('sync-test-lock-4', 'https://x/4'), // succeeds; probes pg_locks on its own connection
+    ];
+
+    const realLink = mediaRepo.linkHashtagMedia;
+    let callCount = 0;
+    let probedLockCount: number | null = null;
+
+    const linkSpy = vi.spyOn(mediaRepo, 'linkHashtagMedia').mockImplementation(
+      async (client: any, hashtagId: any, mediaId: any, source: any) => {
+        callCount++;
+        if (callCount === 2 || callCount === 3) {
+          throw new Error(`forced link failure #${callCount}`);
+        }
+        const result = await realLink(client, hashtagId, mediaId, source);
+        if (callCount === 4) {
+          // Same backend/connection as the still-open outer transaction — this
+          // reflects real subtransaction lock state, not a snapshot taken after
+          // the transaction has already committed and released its client.
+          const { rows } = await client.query(
+            `SELECT count(*) FROM pg_locks WHERE locktype = 'transactionid' AND pid = pg_backend_pid()`,
+          );
+          probedLockCount = Number(rows[0].count);
+        }
+        return result;
+      },
+    );
+
+    const instagram = {
+      fetchHashtagMedia: vi.fn(async (opts: any) => {
+        await opts.onPage(items);
+        return { items, pages: 1 };
+      }),
+    };
+    const queue = fakeQueue();
+
+    try {
+      const result = await runSyncMedia({ queue, instagram } as any, { hashtagName, source: 'top' });
+
+      // Behavioural property: items after (and before) the failures still persisted;
+      // the two forced-failure items did not.
+      expect(result.created).toBe(2);
+      const { rows } = await pool.query(
+        `SELECT ig_media_id FROM media WHERE ig_media_id LIKE 'sync-test-lock-%' ORDER BY ig_media_id`,
+      );
+      expect(rows.map((r) => r.ig_media_id)).toEqual(['sync-test-lock-1', 'sync-test-lock-4']);
+
+      // Direct lock-count property, measured on the transaction's own backend while
+      // it is still open: bounded regardless of how many prior items failed. Two
+      // forced failures should not leave two extra zombie subtransaction locks
+      // behind — without RELEASE SAVEPOINT this was observed to climb with every
+      // failure instead of staying flat.
+      expect(probedLockCount).not.toBeNull();
+      expect(probedLockCount!).toBeLessThanOrEqual(2);
+    } finally {
+      linkSpy.mockRestore();
+    }
   });
 });

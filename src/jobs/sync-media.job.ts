@@ -49,6 +49,7 @@ export async function runSyncMedia(
               if (inserted) { created++; ids.push(id); }
             } catch (err) {
               await client.query('ROLLBACK TO SAVEPOINT item');
+              await client.query('RELEASE SAVEPOINT item');
               // One malformed item must not lose the rest of the page.
               console.error(`[sync] skipped item ${item.id}: ${redact((err as Error).message)}`);
             }
