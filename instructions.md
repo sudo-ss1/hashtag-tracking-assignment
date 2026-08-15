@@ -2,10 +2,9 @@
 
 Instagram hashtag media ingestion: pulls media for a hashtag from Meta's Graph
 API, stores metadata in Postgres, copies assets into durable storage, and
-serves the result through one paginated read endpoint. See
-`docs/superpowers/specs/2026-08-14-hashtag-tracking-design.md` for the full
-design rationale; this file covers setup, configuration, and the tradeoffs
-made along the way.
+serves the result through one paginated read endpoint. This file covers setup,
+configuration, and the tradeoffs made along the way; `README.md` covers the
+architecture and the Meta API behaviour that shaped it.
 
 ## setup
 

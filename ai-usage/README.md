@@ -14,9 +14,10 @@ significant design decision downstream — the adaptive page-size client, the nu
 columns, the separate `unavailable` asset state — traces back to something measured
 rather than assumed.
 
-**Spec, then plan, then implement.** The design spec
-(`docs/superpowers/specs/`) argues from those measurements. The implementation plan
-(`docs/superpowers/plans/`) breaks it into tasks, each ending in a test and a commit.
+**Design, then plan, then implement.** The design argued from those measurements
+before any code was written, and was broken into tasks that each ended in a passing
+test and a commit. The reasoning that survived into the finished system is recorded
+in `instructions.md` under `tradeoffs`.
 
 **Adversarial review after every task.** Each task was reviewed against the live
 database rather than by inspection alone, with the reviewer explicitly asked to try to

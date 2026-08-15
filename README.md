@@ -4,10 +4,8 @@ Tracks Instagram media for a hashtag (`matcha`): pulls it from Meta's Graph
 API, stores metadata in Postgres, copies assets into durable storage, and
 serves the result through one paginated `GET /hashtags` endpoint.
 
-Full setup instructions, every environment variable, and the tradeoffs behind
-each design decision are in [`instructions.md`](./instructions.md). The
-complete design rationale is in
-[`docs/superpowers/specs/2026-08-14-hashtag-tracking-design.md`](./docs/superpowers/specs/2026-08-14-hashtag-tracking-design.md).
+Full setup instructions, every environment variable, and the reasoning behind
+each design decision are in [`instructions.md`](./instructions.md).
 
 ## Architecture
 
