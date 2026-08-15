@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest';
 import request from 'supertest';
 import { pool, withTransaction } from '../db/pool.js';
 import { upsertMedia, linkHashtagMedia } from '../db/repositories/media.repository.js';
@@ -101,5 +101,57 @@ describe('GET /hashtags', () => {
 
     const pending = res.body.data.find((d: any) => d.id === 'api-test-6');
     expect(pending.assetUrl).toBeNull();
+  });
+
+  it('issues exactly one database query per request, regardless of row count', async () => {
+    // Seed and set up BEFORE installing the spy, so setup queries aren't counted.
+    for (let i = 1; i <= 5; i++) {
+      await seed(i, `2026-08-1${i}T10:00:00+0000`);
+    }
+
+    const querySpy = vi.spyOn(pool, 'query');
+    try {
+      const res = await request(app).get(`/hashtags?hashtag=${TEST_TAG}&limit=10`);
+      expect(res.status).toBe(200);
+      // Meaningful only if the page actually has multiple rows: otherwise a
+      // single query could trivially "pass" against an empty result set.
+      expect(res.body.data.length).toBeGreaterThanOrEqual(5);
+      expect(querySpy).toHaveBeenCalledTimes(1);
+    } finally {
+      querySpy.mockRestore();
+    }
+  });
+
+  it('builds assetUrl for a full page without any additional database queries', async () => {
+    // Seed rows and mark them 'stored' with a non-null storage_key BEFORE
+    // installing the spy, so the asset-url path (storage.getReadUrl per row)
+    // is exercised on every row without setup queries being counted.
+    const ids: number[] = [];
+    for (let i = 1; i <= 5; i++) {
+      ids.push(await seed(i, `2026-08-1${i}T10:00:00+0000`));
+    }
+    for (const id of ids) {
+      await pool.query(
+        `UPDATE media SET asset_status = 'stored', storage_key = $2 WHERE id = $1`,
+        [id, `hashtag-media/api-test-nplus1-${id}.jpg`],
+      );
+    }
+
+    const querySpy = vi.spyOn(pool, 'query');
+    try {
+      const res = await request(app).get(`/hashtags?hashtag=${TEST_TAG}&limit=10`);
+      expect(res.status).toBe(200);
+      expect(res.body.data.length).toBeGreaterThanOrEqual(5);
+      expect(res.body.data.every((d: any) => d.assetUrl !== null)).toBe(true);
+      // Proves building N assetUrls (storage.getReadUrl per row) adds zero
+      // round-trips: the query count is identical to a page with no storage
+      // keys at all. This does not spy on storage.getReadUrl directly (the
+      // router constructs the storage instance internally via createStorage()
+      // and isn't injectable without a production refactor), so it's an
+      // indirect but honest proxy for "asset URL construction is I/O-free".
+      expect(querySpy).toHaveBeenCalledTimes(1);
+    } finally {
+      querySpy.mockRestore();
+    }
   });
 });

@@ -48,6 +48,14 @@ export function hashtagsRouter(): Router {
       }
 
       const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+      // One query per request — no per-row lookups. `getReadUrl` is I/O-free in
+      // both storage drivers (S3 presigning is local crypto), so building
+      // assetUrl below adds no round-trips. EXPLAIN ANALYZE on the ?hashtag=
+      // path shows a nested-loop semi join driven by idx_media_feed: Postgres
+      // probes the join index once per candidate row and stops at LIMIT,
+      // keeping this O(limit). The unfiltered path uses the same index for its
+      // ORDER BY + LIMIT scan. A hash join would materialise every matching row
+      // before sorting, making it O(table).
       const { rows } = await pool.query(
         `SELECT m.id, m.ig_media_id, m.media_type, m.caption, m.permalink, m.ig_timestamp,
                 m.like_count, m.comments_count, m.storage_key, m.asset_status
