@@ -7,7 +7,7 @@ export function decodeCursor(raw: string): { ts: Date; id: number } {
   const [tsPart, idPart] = decoded.split('|');
   const ts = new Date(tsPart ?? '');
   const id = Number(idPart);
-  if (Number.isNaN(ts.getTime()) || !Number.isInteger(id)) {
+  if (Number.isNaN(ts.getTime()) || !Number.isSafeInteger(id) || id <= 0) {
     throw new Error('malformed cursor');
   }
   return { ts, id };

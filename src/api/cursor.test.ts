@@ -13,4 +13,9 @@ describe('cursor', () => {
     expect(() => decodeCursor('not-base64!!')).toThrow();
     expect(() => decodeCursor(Buffer.from('garbage').toString('base64url'))).toThrow();
   });
+
+  it('rejects an out-of-range id beyond Postgres bigint bounds', () => {
+    const raw = Buffer.from('2026-01-01T00:00:00.000Z|99999999999999999999').toString('base64url');
+    expect(() => decodeCursor(raw)).toThrow();
+  });
 });
