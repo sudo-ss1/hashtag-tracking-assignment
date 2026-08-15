@@ -17,7 +17,7 @@ const Schema = z.object({
   QUEUE_DRIVER: z.enum(['sqs', 'memory']).default('memory'),
   STORAGE_DRIVER: z.enum(['s3', 'local']).default('local'),
 
-  AWS_REGION: z.string().default('ap-south-1'),
+  AWS_REGION: z.string().default('eu-west-1'),
   SQS_QUEUE_URL: z.string().optional(),
   S3_BUCKET: z.string().optional(),
   S3_PREFIX: z.string().default('hashtag-media'),
