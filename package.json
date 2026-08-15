@@ -13,8 +13,7 @@
     "dev:worker": "tsx watch src/worker.ts",
     "start:api": "tsx src/server.ts",
     "start:worker": "tsx src/worker.ts",
-    "migrate": "node-pg-migrate -m src/db/migrations --envPath .env -j sql",
-    "sync:top": "tsx scripts/seed-top-media.ts"
+    "migrate": "node-pg-migrate -m src/db/migrations --envPath .env -j sql"
   },
   "keywords": [],
   "author": "",

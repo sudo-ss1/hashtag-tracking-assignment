@@ -31,12 +31,16 @@ export async function runSyncMedia(
   let seen = 0, created = 0, pages = 0;
 
   try {
-    const result = await deps.instagram.fetchHashtagMedia({
+    await deps.instagram.fetchHashtagMedia({
       hashtagId: hashtag.ig_hashtag_id,
       source: payload.source,
       maxItems: config.syncMaxItems,
       maxPages: config.syncMaxPages,
       onPage: async (items) => {
+        // Tracked here, per page, rather than read off the client's return value —
+        // fetchHashtagMedia throws (no return) on a failed run, and pages_fetched
+        // must still reflect how far the run actually got before failing.
+        pages++;
         const toDownload = await withTransaction(async (client) => {
           const ids: number[] = [];
           for (const item of items) {
@@ -67,7 +71,6 @@ export async function runSyncMedia(
       },
     });
 
-    pages = result.pages;
     await finishRun(runId, { status: 'succeeded', pages, seen, created });
     return { seen, created, pages };
   } catch (err) {

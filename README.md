@@ -99,5 +99,5 @@ curl -s 'http://localhost:3000/hashtags?hashtag=matcha&limit=3'
 ```
 
 ```bash
-npm test   # 49 tests
+npm test   # 52 tests
 ```

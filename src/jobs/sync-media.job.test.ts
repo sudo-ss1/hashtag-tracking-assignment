@@ -170,4 +170,31 @@ describe('runSyncMedia', () => {
       linkSpy.mockRestore();
     }
   });
+
+  it('records pages_fetched from pages actually completed before a failed run, not zero', async () => {
+    // Two pages commit successfully, then the client throws on a third. Previously
+    // `pages` was only assigned from the client's return value on the success path,
+    // so a failed run always recorded pages_fetched=0 no matter how far it got.
+    const page1 = [media('sync-test-pg-1', 'https://x/1')];
+    const page2 = [media('sync-test-pg-2', 'https://x/2')];
+
+    const instagram = {
+      fetchHashtagMedia: vi.fn(async (opts: any) => {
+        await opts.onPage(page1);
+        await opts.onPage(page2);
+        throw new Error('simulated exhaustion on page 3');
+      }),
+    };
+    const queue = fakeQueue();
+
+    await expect(runSyncMedia({ queue, instagram } as any, { hashtagName, source: 'top' }))
+      .rejects.toThrow('simulated exhaustion on page 3');
+
+    const { rows } = await pool.query(
+      `SELECT status, pages_fetched FROM sync_runs WHERE hashtag_id=$1 ORDER BY started_at DESC LIMIT 1`,
+      [testHashtagId],
+    );
+    expect(rows[0].status).toBe('failed');
+    expect(rows[0].pages_fetched).toBe(2);
+  });
 });

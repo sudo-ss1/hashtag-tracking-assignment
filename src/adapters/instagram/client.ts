@@ -110,11 +110,15 @@ export class InstagramClient {
 
         // code:1 is Meta shedding load at this page size — shrink and retry. This
         // is progress, not a failed attempt, so it must not consume the budget.
+        // A brief, fixed sleep (not the exponential/jittered backoff below, and not
+        // counted against the attempt budget) keeps a halving cascade from firing
+        // 9->4->2->1 back-to-back at the exact moment Meta is already shedding load.
         if (code === 1 && pageSize > MIN_PAGE_SIZE) {
           const reduced = Math.max(MIN_PAGE_SIZE, Math.floor(pageSize / 2));
           console.warn(`[ig] ${opts.source}_media: Meta returned code:1 at limit=${pageSize}; reducing to ${reduced}`);
           pageSize = reduced;
           lastError = new GraphApiError(message, code, res.status);
+          await this.sleep(this.backoffMs);
           continue;
         }
         if (res.status >= 500 || res.status === 429) {

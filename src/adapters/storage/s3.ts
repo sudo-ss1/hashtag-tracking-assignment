@@ -1,4 +1,4 @@
-import { S3Client, HeadObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import type { Readable } from 'node:stream';
@@ -28,12 +28,5 @@ export class S3Storage implements Storage {
     return getSignedUrl(this.client, new GetObjectCommand({ Bucket: this.bucket, Key: key }), {
       expiresIn: PRESIGN_TTL_SECONDS,
     });
-  }
-
-  async exists(key: string): Promise<boolean> {
-    try {
-      await this.client.send(new HeadObjectCommand({ Bucket: this.bucket, Key: key }));
-      return true;
-    } catch { return false; }
   }
 }

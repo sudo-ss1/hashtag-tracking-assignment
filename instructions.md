@@ -52,13 +52,12 @@ Run the test suite with:
 npm test
 ```
 
-49 tests, all passing. Tests seed their own rows under dedicated hashtag
+52 tests, all passing. Tests seed their own rows under dedicated hashtag
 names, so they stay green even with live `matcha` data already in the table
 (see `tradeoffs`).
 
 Other scripts of note: `npm run dev:api` / `npm run dev:worker` (watch mode),
-`npm run build` (typecheck via `tsc`), `npm run sync:top` (one-off seed
-script for `top_media`).
+`npm run build` (typecheck via `tsc`).
 
 ## vars
 
@@ -158,12 +157,12 @@ it would take. Organised by category.
    this isn't just convenient — it's the only option, since its ~24-hour
    window will have moved on by the time a re-fetch is needed.
 
-10. **`hashtag_media` has PK `(hashtag_id, media_id, source)`.** A post
-    found via both `top_media` and `recent_media` gets two rows, not one
-    overwritten by the other — preserving which endpoint(s) actually
-    surfaced it. This is directly observable in the shipped data: the join
-    table holds separate `top` and `recent` sightings for overlapping
-    posts rather than collapsing them.
+10. **`hashtag_media` has PK `(hashtag_id, media_id, source)`.** This is a
+    design property, not something the current dataset demonstrates: a post
+    genuinely can surface via both `top_media` and `recent_media`, and the
+    composite key means both sightings get their own row rather than one
+    overwriting the other — preserving which endpoint(s) actually surfaced
+    it, whenever that overlap happens to occur.
 
 11. **Engagement counts are overwritten on re-sync, not versioned.** `like_count`
     and `comments_count` reflect only the most recent sync. A
@@ -192,11 +191,20 @@ it would take. Organised by category.
     process with its own backoff schedule — recovery only happens when the
     next sync runs. A dedicated sweeper is the natural next step.
 
-15. **`asset_attempts` has no cap.** This is unreachable today because only
-    newly-inserted rows get a `DOWNLOAD_ASSET` job enqueued — nothing
-    currently retries a `failed` row on a loop. But if a retry sweeper is
-    added later (item 14), it **must** cap `asset_attempts` or add
-    backoff, or a permanently-dead CDN URL would retry forever.
+15. **`asset_attempts` is capped at 5 (`MAX_ASSET_ATTEMPTS`).** Earlier
+    revisions of this document claimed nothing retried a `failed` row on a
+    loop — that was wrong. The reclaim step (item 14) runs at the start of
+    every sync and re-enqueues every `pending`/`failed` row for the
+    hashtag, and the in-memory/SQS queue redelivers an unacked message on
+    its own visibility timeout independently of that — so a permanently-dead
+    CDN URL was retrying forever, with `asset_attempts` climbing without
+    bound (reproduced: 6 visibility-timeout ticks produced
+    `asset_attempts=6`). `claimForDownload` and `findReclaimableMediaIds`
+    now both exclude rows at or past the cap; such a row stays `failed`
+    permanently rather than being reclaimed again. A future retry sweeper
+    that wants to give a row another chance would need to explicitly reset
+    `asset_attempts`, and should have a reason to believe the underlying
+    condition (e.g. a dead CDN URL) has actually changed before doing so.
 
 16. **Rate-limit headers are not parsed.** `x-business-use-case-usage` is
     present on Graph responses but unused; backoff is reactive (respond to
@@ -229,9 +237,19 @@ it would take. Organised by category.
     occupied by unrelated services on the development machine. Nothing
     inside the container changes; only the host-side port differs.
 
+21. **The worker is a single, strictly serial consumer.** One process pulls
+    a batch and processes each message one at a time in a plain `for` loop,
+    with no concurrency and no separate pool for `SYNC_*` vs.
+    `DOWNLOAD_ASSET` jobs — so a slow or throttled sync blocks every
+    download behind it. Observed directly: a throttled `top_media` sync
+    took roughly 13 minutes, during which zero `DOWNLOAD_ASSET` jobs ran,
+    even though downloads were already queued. Splitting sync and download
+    onto separate consumers (or adding concurrency within one) is the
+    natural fix and was not done here for scope reasons.
+
 ### Design choices worth noting
 
-21. **Queue and Storage are interfaces with two working implementations
+22. **Queue and Storage are interfaces with two working implementations
     each** (SQS/S3 for AWS, in-memory/local-disk for local runs), selected
     by `QUEUE_DRIVER`/`STORAGE_DRIVER`. Both pairs are fully implemented,
     not one real implementation plus a stub — that's the only way the
@@ -240,12 +258,15 @@ it would take. Organised by category.
     same way SQS does; without that, retry behaviour could never be
     exercised locally at all.
 
-22. **Storage keys use a driver-independent prefix.** Switching
+23. **Storage keys use a driver-independent prefix.** Switching
     `STORAGE_DRIVER` from `local` to `s3` (or back) does not orphan
     existing `storage_key` values, because the key format doesn't encode
-    which driver wrote it.
+    which driver wrote it. `Storage.exists()` was removed from the
+    interface (and both implementations) after review found it had no
+    production caller — `claimForDownload`'s status guard already prevents
+    re-downloading a stored asset, so the method was dead code.
 
-23. **The read API uses keyset pagination, not `LIMIT`/`OFFSET`.** Rows land
+24. **The read API uses keyset pagination, not `LIMIT`/`OFFSET`.** Rows land
     at the top of the sort order continuously as syncs run, and offset
     paging would re-show page-1 rows on page 2 once new rows arrive
     mid-pagination. The cursor is `(ig_timestamp, id)`, with `id` as the

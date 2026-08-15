@@ -11,21 +11,17 @@ describe('LocalStorage', () => {
     const s = new LocalStorage(dir);
     const res = await s.put('media/abc/1.jpg', Readable.from([Buffer.from('hello')]), 'image/jpeg');
     expect(res.bytes).toBe(5);
-    expect(await s.exists('media/abc/1.jpg')).toBe(true);
-  });
-
-  it('reports a missing key as absent', async () => {
-    const s = new LocalStorage(dir);
-    expect(await s.exists('media/nope.jpg')).toBe(false);
   });
 
   it('rejects keys that escape the storage root', async () => {
     const s = new LocalStorage(dir);
-    await expect(s.exists('../../etc/passwd')).rejects.toThrow(/invalid key/i);
+    await expect(s.put('../../etc/passwd', Readable.from([Buffer.from('x')]), 'text/plain'))
+      .rejects.toThrow(/invalid key/i);
   });
 
   it('rejects absolute-path keys', async () => {
     const s = new LocalStorage(dir);
-    await expect(s.exists('/etc/passwd')).rejects.toThrow(/invalid key/i);
+    await expect(s.put('/etc/passwd', Readable.from([Buffer.from('x')]), 'text/plain'))
+      .rejects.toThrow(/invalid key/i);
   });
 });

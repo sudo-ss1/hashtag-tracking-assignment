@@ -39,13 +39,19 @@ export type DownloadClaim = {
   id: number; ig_media_id: string; source_media_url: string | null; media_type: string;
 };
 
+// A row past this many attempts stays 'failed' permanently rather than being
+// reclaimed forever — see tradeoffs #15.
+export const MAX_ASSET_ATTEMPTS = 5;
+
 // Atomically moves pending/failed -> downloading so two workers cannot both take it.
+// Excludes rows that have already exhausted MAX_ASSET_ATTEMPTS: a permanently-dead
+// URL must stop retrying, not redeliver every visibility-timeout tick forever.
 export async function claimForDownload(mediaId: number): Promise<DownloadClaim | null> {
   const { rows } = await pool.query(
     `UPDATE media SET asset_status = 'downloading', asset_attempts = asset_attempts + 1, updated_at = now()
-     WHERE id = $1 AND asset_status IN ('pending','failed')
+     WHERE id = $1 AND asset_status IN ('pending','failed') AND asset_attempts < $2
      RETURNING id, ig_media_id, source_media_url, media_type`,
-    [mediaId],
+    [mediaId, MAX_ASSET_ATTEMPTS],
   );
   return rows[0] ?? null;
 }
@@ -90,7 +96,11 @@ export async function releaseStaleClaims(staleMs = STALE_DOWNLOADING_MS): Promis
   return rowCount ?? 0;
 }
 
-/** Media for this hashtag still needing an asset — orphaned or previously failed. */
+/**
+ * Media for this hashtag still needing an asset — orphaned or previously failed.
+ * Excludes rows that have exhausted MAX_ASSET_ATTEMPTS, so an unreachable CDN
+ * URL is not reclaimed and re-enqueued on every sync forever.
+ */
 export async function findReclaimableMediaIds(hashtagId: number, limit: number): Promise<number[]> {
   const { rows } = await pool.query(
     `SELECT DISTINCT m.id
@@ -98,9 +108,10 @@ export async function findReclaimableMediaIds(hashtagId: number, limit: number):
      JOIN hashtag_media hm ON hm.media_id = m.id
      WHERE hm.hashtag_id = $1
        AND m.asset_status IN ('pending','failed')
+       AND m.asset_attempts < $3
      ORDER BY m.id
      LIMIT $2`,
-    [hashtagId, limit],
+    [hashtagId, limit, MAX_ASSET_ATTEMPTS],
   );
   return rows.map((r) => Number(r.id));
 }

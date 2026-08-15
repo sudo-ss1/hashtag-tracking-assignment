@@ -11,7 +11,6 @@ const base = {
 const fakeStorage = () => ({
   put: vi.fn(async () => ({ bytes: 42 })),
   getReadUrl: vi.fn(async (k: string) => `/assets/${k}`),
-  exists: vi.fn(async () => false),
 });
 
 beforeEach(async () => { await pool.query(`DELETE FROM media WHERE ig_media_id LIKE 'dl-test-%'`); });
@@ -59,6 +58,24 @@ describe('runDownloadAsset', () => {
     await expect(runDownloadAsset({ storage: fakeStorage(), fetchImpl } as any, { mediaId: id })).rejects.toThrow();
     const { rows } = await pool.query('SELECT asset_status FROM media WHERE id=$1', [id]);
     expect(rows[0].asset_status).toBe('failed');
+  });
+
+  it('names the stored key from Content-Type, not a misleading URL extension', async () => {
+    // Reproduces a real observation: Instagram's CDN served a URL path ending
+    // in .heic while the actual bytes (and Content-Type) were JPEG. The URL
+    // extension must lose to Content-Type or the object gets served with the
+    // wrong MIME type.
+    const { id } = await withTransaction((c) =>
+      upsertMedia(c, { ...base, media_type: 'IMAGE', id: 'dl-test-ext', media_url: 'https://cdn/photo.heic' } as any));
+    const storage = fakeStorage();
+    const fetchImpl = vi.fn(async () => new Response(Readable.toWeb(Readable.from([Buffer.from('img')])) as any, {
+      status: 200, headers: { 'content-type': 'image/jpeg' },
+    })) as unknown as typeof fetch;
+
+    await runDownloadAsset({ storage, fetchImpl } as any, { mediaId: id });
+
+    const { rows } = await pool.query('SELECT storage_key FROM media WHERE id=$1', [id]);
+    expect(rows[0].storage_key).toMatch(/\.jpg$/);
   });
 
   it('skips an already-stored asset without re-downloading', async () => {

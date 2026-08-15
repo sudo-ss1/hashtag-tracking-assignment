@@ -1,8 +1,11 @@
 import pg from 'pg';
 import { config } from '../config/index.js';
 
-// Meta returns like_count/comments_count as JSON numbers and Postgres returns
-// BIGINT as a string by default; media counts are safely within Number range.
+// Postgres returns BIGINT as a string by default. The BIGINT columns this app
+// actually has are the GENERATED ALWAYS AS IDENTITY primary/foreign keys (id,
+// hashtag_id, media_id, etc.) and media.storage_bytes — not like_count/
+// comments_count, which are INTEGER and unaffected. All of those are safely
+// within Number's safe-integer range for this dataset's scale.
 pg.types.setTypeParser(pg.types.builtins.INT8, (v) => Number(v));
 
 export const pool = new pg.Pool({ connectionString: config.databaseUrl, max: 10 });

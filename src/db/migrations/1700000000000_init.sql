@@ -37,7 +37,11 @@ CREATE TABLE media (
   updated_at        TIMESTAMPTZ  NOT NULL DEFAULT now()
 );
 
--- Exactly matches the read API's ORDER BY.
+-- Matches the read API's ORDER BY and is used for the unfiltered feed
+-- (confirmed via EXPLAIN: Index Only Scan). On the `?hashtag=` filtered path
+-- the planner instead resolves the EXISTS join first and sorts the (small)
+-- result explicitly, so this index goes unused there — it does not "exactly
+-- match" every path the read API takes, only the unfiltered one.
 CREATE INDEX idx_media_feed ON media (ig_timestamp DESC, id DESC);
 -- Partial: only rows still needing asset work.
 CREATE INDEX idx_media_asset_pending ON media (asset_status)

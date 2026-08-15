@@ -1,7 +1,9 @@
-import { describe, it, expect, beforeEach, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
 import { pool, withTransaction } from '../pool.js';
-import { upsertMedia, linkHashtagMedia, markAssetStored, claimForDownload } from './media.repository.js';
-import { getHashtagByName } from './hashtag.repository.js';
+import {
+  upsertMedia, linkHashtagMedia, markAssetStored, claimForDownload,
+  findReclaimableMediaIds, MAX_ASSET_ATTEMPTS,
+} from './media.repository.js';
 
 const item = {
   id: 'repo-test-1', media_type: 'IMAGE', timestamp: '2026-08-13T15:13:39+0000',
@@ -9,9 +11,26 @@ const item = {
   like_count: 10, comments_count: 2,
 };
 
+// Dedicated hashtag for these tests, not 'matcha' — live syncs leave real
+// pending/failed rows under 'matcha', and findReclaimableMediaIds would pick
+// those up too, contradicting the isolation these tests otherwise rely on.
+const hashtagName = 'repo-test-tag';
+let testHashtagId: number;
+
+beforeAll(async () => {
+  const { rows } = await pool.query(
+    `INSERT INTO hashtags (ig_hashtag_id, name) VALUES ('repo-test-hashtag-id', $1)
+     ON CONFLICT (ig_hashtag_id) DO UPDATE SET ig_hashtag_id = EXCLUDED.ig_hashtag_id
+     RETURNING id`,
+    [hashtagName],
+  );
+  testHashtagId = Number(rows[0].id);
+});
+
 beforeEach(async () => { await pool.query(`DELETE FROM media WHERE ig_media_id LIKE 'repo-test-%'`); });
 afterAll(async () => {
   await pool.query(`DELETE FROM media WHERE ig_media_id LIKE 'repo-test-%'`);
+  await pool.query(`DELETE FROM hashtags WHERE ig_hashtag_id = 'repo-test-hashtag-id'`);
   await pool.end();
 });
 
@@ -45,12 +64,11 @@ describe('upsertMedia', () => {
   });
 
   it('records both sources when the same media appears in top and recent', async () => {
-    const h = await getHashtagByName('matcha');
     const { id } = await withTransaction((c) => upsertMedia(c, item));
     await withTransaction(async (c) => {
-      await linkHashtagMedia(c, h!.id, id, 'top');
-      await linkHashtagMedia(c, h!.id, id, 'recent');
-      await linkHashtagMedia(c, h!.id, id, 'top');   // repeat must not throw
+      await linkHashtagMedia(c, testHashtagId, id, 'top');
+      await linkHashtagMedia(c, testHashtagId, id, 'recent');
+      await linkHashtagMedia(c, testHashtagId, id, 'top');   // repeat must not throw
     });
     const { rows } = await pool.query('SELECT source FROM hashtag_media WHERE media_id=$1 ORDER BY source::text', [id]);
     expect(rows.map((r) => r.source)).toEqual(['recent', 'top']);
@@ -75,5 +93,34 @@ describe('upsertMedia', () => {
     await withTransaction((c) => upsertMedia(c, withoutUrl));
     const { rows } = await pool.query('SELECT source_media_url FROM media WHERE id=$1', [id]);
     expect(rows[0].source_media_url).toBe('https://cdn/keep.jpg');
+  });
+
+  it('a row at the attempt cap is not claimable and is not reclaimed', async () => {
+    const { id } = await withTransaction((c) => upsertMedia(c, item));
+    await withTransaction((c) => linkHashtagMedia(c, testHashtagId, id, 'top'));
+    await pool.query(
+      `UPDATE media SET asset_status='failed', asset_attempts=$2 WHERE id=$1`,
+      [id, MAX_ASSET_ATTEMPTS],
+    );
+
+    expect(await claimForDownload(id)).toBeNull();
+
+    const reclaimable = await findReclaimableMediaIds(testHashtagId, 100);
+    expect(reclaimable).not.toContain(id);
+  });
+
+  it('a row just under the attempt cap is still claimable and reclaimable', async () => {
+    const { id } = await withTransaction((c) => upsertMedia(c, item));
+    await withTransaction((c) => linkHashtagMedia(c, testHashtagId, id, 'top'));
+    await pool.query(
+      `UPDATE media SET asset_status='failed', asset_attempts=$2 WHERE id=$1`,
+      [id, MAX_ASSET_ATTEMPTS - 1],
+    );
+
+    const reclaimable = await findReclaimableMediaIds(testHashtagId, 100);
+    expect(reclaimable).toContain(id);
+
+    const claim = await claimForDownload(id);
+    expect(claim).not.toBeNull();
   });
 });
