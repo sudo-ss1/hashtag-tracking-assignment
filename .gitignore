@@ -1,0 +1,14 @@
+# secrets — never commit
+.env
+.env.*
+!.env.example
+*.pem
+
+node_modules/
+dist/
+coverage/
+
+# local storage driver output
+storage/
+*.log
+.DS_Store
