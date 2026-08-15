@@ -8,8 +8,8 @@ node_modules/
 dist/
 coverage/
 
-# local storage driver output
-storage/
+# local storage driver output (repo-root only — do not shadow src/**/storage)
+/storage/
 *.log
 .DS_Store
 
