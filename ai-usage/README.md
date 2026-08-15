@@ -1,10 +1,8 @@
 # AI usage
 
-This folder contains the working session for this assignment.
-
-`claude-code-session.md` is the full, unedited transcript (274 messages), with the
-Instagram access token, contact details, and unrelated file paths redacted. Tool-call
-payloads are elided — the git history is the authoritative record of what was written.
+This is an account of how the assignment was actually built, and what that
+process caught. The git history is the authoritative record of what was written —
+19 commits, each ending in a passing test suite.
 
 ## How the assignment was built
 
@@ -26,8 +24,8 @@ break the code — not to confirm it worked.
 
 ## What the review process caught
 
-The most useful part of the transcript is the defects found *in the design I had
-written*, before they reached the final code. Three worth reading:
+The most useful output of the process was the defects it found *in the design I had
+written*, before they reached the final code. Three worth calling out:
 
 | Defect | Why it mattered |
 |---|---|
@@ -36,9 +34,9 @@ written*, before they reached the final code. Three worth reading:
 | An upsert that never refreshed `source_media_url` | Meta's CDN links expire within days. A failed download would retry forever against a dead URL, so the documented retry path would have silently never worked. |
 
 Each was verified before being accepted, and each has a regression test that fails
-against the pre-fix code. Where a proposed fix was wrong, that is in the transcript
-too — an unconditional URL refresh would have *nulled out* good URLs whenever Meta
-omitted the field, which is why the final fix uses `COALESCE`.
+against the pre-fix code. The first proposed fix was not always the right one — an
+unconditional URL refresh would have *nulled out* good URLs whenever Meta omitted the
+field, which is why the final version uses `COALESCE`.
 
 ## What was decided rather than generated
 

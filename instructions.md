@@ -299,5 +299,6 @@ That review process caught and fixed several material defects, including:
   keep retrying against a CDN URL that had already expired by the time of
   the retry.
 
-A full session transcript is included at `ai-usage/claude-code-session.md`,
-with sensitive values redacted.
+`ai-usage/README.md` describes the method in more detail, including the
+defects the review process caught and how each was verified before being
+accepted.
