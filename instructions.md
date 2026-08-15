@@ -64,6 +64,47 @@ Other scripts of note: `npm run dev:api` / `npm run dev:worker` (watch mode),
 to `dist/` — it builds, it does not just typecheck). To typecheck everything
 including tests without emitting, use `npx tsc --noEmit`.
 
+### Running against AWS instead of the local drivers
+
+The defaults above use the in-memory queue and local disk storage so the
+project runs with no AWS account. To run the same code against real AWS,
+set four variables in `.env` and restart — no code changes:
+
+```env
+QUEUE_DRIVER=sqs
+STORAGE_DRIVER=s3
+SQS_QUEUE_URL=https://sqs.<region>.amazonaws.com/<account-id>/<queue-name>
+S3_BUCKET=<bucket-name>
+```
+
+Credentials are resolved by the AWS SDK's default provider chain
+(`~/.aws/credentials`, environment variables, or an instance role) — the
+application never reads or stores them itself. `AWS_REGION` applies to both
+clients. Config validation fails at boot if `SQS_QUEUE_URL` or `S3_BUCKET` is
+missing while its driver is selected, so a misconfiguration surfaces on
+startup rather than mid-download.
+
+To verify your own bucket and queue before running the pipeline:
+
+```bash
+npx tsx scripts/aws-smoke.ts
+```
+
+It writes a small object, fetches it back through a presigned URL, then
+enqueues, receives and acks one SQS message — exercising every method both
+adapters expose. Both driver pairs were verified this way against a real
+bucket and queue in `eu-west-1`.
+
+Note that `storage_key` values are driver-independent, so rows written under
+one driver keep the same key under the other. If you switch `local` → `s3`
+after assets have already been downloaded locally, those files need copying
+into the bucket (`aws s3 sync ./storage s3://<bucket>`) or their rows reset
+to `pending` for re-download; otherwise the API returns presigned URLs for
+objects that are not there yet.
+
+Tests always run against the local drivers regardless of `.env` (pinned in
+`vitest.config.ts`), so the suite never requires or touches cloud resources.
+
 ## vars
 
 All variables live in `.env.example`. None have secrets checked in; `.env` is
