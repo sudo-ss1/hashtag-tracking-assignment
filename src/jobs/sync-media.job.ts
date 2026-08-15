@@ -1,5 +1,7 @@
 import { withTransaction } from '../db/pool.js';
-import { upsertMedia, linkHashtagMedia } from '../db/repositories/media.repository.js';
+import {
+  upsertMedia, linkHashtagMedia, releaseStaleClaims, findReclaimableMediaIds,
+} from '../db/repositories/media.repository.js';
 import { getHashtagByName } from '../db/repositories/hashtag.repository.js';
 import { startRun, finishRun } from '../db/repositories/sync-run.repository.js';
 import { config, redact } from '../config/index.js';
@@ -13,6 +15,17 @@ export async function runSyncMedia(
 ): Promise<{ seen: number; created: number; pages: number }> {
   const hashtag = await getHashtagByName(payload.hashtagName);
   if (!hashtag) throw new Error(`unknown hashtag: ${payload.hashtagName}`);
+
+  // Recover work orphaned by a crashed worker or a failed enqueue. The partial index
+  // idx_media_asset_pending exists for exactly this.
+  await releaseStaleClaims();
+  const reclaimable = await findReclaimableMediaIds(hashtag.id, config.syncMaxItems);
+  if (reclaimable.length) {
+    await deps.queue.enqueueBatch(
+      reclaimable.map((mediaId) => ({ job: 'DOWNLOAD_ASSET' as const, payload: { mediaId } })),
+    );
+    console.log(`[sync] reclaimed ${reclaimable.length} media needing assets`);
+  }
 
   const runId = await startRun(hashtag.id, payload.source);
   let seen = 0, created = 0, pages = 0;
@@ -28,11 +41,14 @@ export async function runSyncMedia(
           const ids: number[] = [];
           for (const item of items) {
             seen++;
+            await client.query('SAVEPOINT item');
             try {
               const { id, inserted } = await upsertMedia(client, item);
               await linkHashtagMedia(client, hashtag.id, id, payload.source);
+              await client.query('RELEASE SAVEPOINT item');
               if (inserted) { created++; ids.push(id); }
             } catch (err) {
+              await client.query('ROLLBACK TO SAVEPOINT item');
               // One malformed item must not lose the rest of the page.
               console.error(`[sync] skipped item ${item.id}: ${redact((err as Error).message)}`);
             }

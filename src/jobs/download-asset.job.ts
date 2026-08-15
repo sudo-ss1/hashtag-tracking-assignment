@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { claimForDownload, markAssetStored, markAssetFailed, markAssetUnavailable } from '../db/repositories/media.repository.js';
 import { streamRemote } from '../lib/download.js';
-import { config } from '../config/index.js';
+import { config, redact } from '../config/index.js';
 import type { Storage } from '../adapters/storage/index.js';
 
 export type DownloadDeps = { storage: Storage; fetchImpl?: typeof fetch };
@@ -20,19 +20,19 @@ export async function runDownloadAsset(
   // Already stored, already unavailable, or taken by another worker.
   if (!claim) return 'skipped';
 
-  if (!claim.source_media_url) {
-    await markAssetUnavailable(claim.id);
-    return 'unavailable';
-  }
-
   try {
+    if (!claim.source_media_url) {
+      await markAssetUnavailable(claim.id);
+      return 'unavailable';
+    }
+
     const { body, contentType } = await streamRemote(claim.source_media_url, deps.fetchImpl);
     const key = `${config.s3.prefix}/${claim.ig_media_id}${extensionFor(contentType, claim.source_media_url)}`;
     const { bytes } = await deps.storage.put(key, body, contentType);
     await markAssetStored(claim.id, key, contentType, bytes);
     return 'stored';
   } catch (err) {
-    await markAssetFailed(claim.id, (err as Error).message);
+    await markAssetFailed(claim.id, redact((err as Error).message));
     throw err;   // rethrow so the queue redelivers
   }
 }

@@ -74,3 +74,33 @@ export async function markAssetUnavailable(mediaId: number): Promise<void> {
     [mediaId],
   );
 }
+
+const STALE_DOWNLOADING_MS = 15 * 60 * 1000;
+
+/** Releases claims abandoned by a crashed worker so they become retryable again. */
+export async function releaseStaleClaims(staleMs = STALE_DOWNLOADING_MS): Promise<number> {
+  const { rowCount } = await pool.query(
+    `UPDATE media SET asset_status = 'failed',
+            asset_error = 'reclaimed: stale downloading claim',
+            updated_at = now()
+     WHERE asset_status = 'downloading'
+       AND updated_at < now() - ($1::bigint * interval '1 millisecond')`,
+    [staleMs],
+  );
+  return rowCount ?? 0;
+}
+
+/** Media for this hashtag still needing an asset — orphaned or previously failed. */
+export async function findReclaimableMediaIds(hashtagId: number, limit: number): Promise<number[]> {
+  const { rows } = await pool.query(
+    `SELECT DISTINCT m.id
+     FROM media m
+     JOIN hashtag_media hm ON hm.media_id = m.id
+     WHERE hm.hashtag_id = $1
+       AND m.asset_status IN ('pending','failed')
+     ORDER BY m.id
+     LIMIT $2`,
+    [hashtagId, limit],
+  );
+  return rows.map((r) => Number(r.id));
+}
