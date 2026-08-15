@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest';
 import { Readable } from 'node:stream';
-import { pool, withTransaction } from '../db/pool.js';
-import { upsertMedia } from '../db/repositories/media.repository.js';
-import { runDownloadAsset } from './download-asset.job.js';
+import { pool, withTransaction } from '../../src/db/pool.js';
+import { upsertMedia } from '../../src/db/repositories/media.repository.js';
+import { runDownloadAsset } from '../../src/jobs/download-asset.job.js';
 
 const base = {
   media_type: 'VIDEO', timestamp: '2026-08-14T18:44:40+0000', permalink: 'https://x/v',

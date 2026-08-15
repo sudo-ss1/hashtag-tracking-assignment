@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { InMemoryQueue } from './memory.js';
+import { InMemoryQueue } from '../../../src/adapters/queue/memory.js';
 
 describe('InMemoryQueue', () => {
   it('returns enqueued messages in FIFO order', async () => {

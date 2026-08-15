@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
-import { pool, withTransaction } from '../pool.js';
+import { pool, withTransaction } from '../../../src/db/pool.js';
 import {
   upsertMedia, linkHashtagMedia, markAssetStored, claimForDownload,
   findReclaimableMediaIds, MAX_ASSET_ATTEMPTS,
-} from './media.repository.js';
+} from '../../../src/db/repositories/media.repository.js';
 
 const item = {
   id: 'repo-test-1', media_type: 'IMAGE', timestamp: '2026-08-13T15:13:39+0000',

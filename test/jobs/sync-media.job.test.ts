@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest';
-import { pool, withTransaction } from '../db/pool.js';
-import { upsertMedia, linkHashtagMedia } from '../db/repositories/media.repository.js';
-import * as mediaRepo from '../db/repositories/media.repository.js';
-import { runSyncMedia } from './sync-media.job.js';
+import { pool, withTransaction } from '../../src/db/pool.js';
+import { upsertMedia, linkHashtagMedia } from '../../src/db/repositories/media.repository.js';
+import * as mediaRepo from '../../src/db/repositories/media.repository.js';
+import { runSyncMedia } from '../../src/jobs/sync-media.job.js';
 
 // Dedicated hashtag for these tests. `runSyncMedia` unconditionally reclaims
 // stale pending media for the hashtag it's given, and live syncs leave real

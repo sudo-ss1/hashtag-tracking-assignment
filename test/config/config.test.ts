@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { loadConfig, redact } from './index.js';
+import { loadConfig, redact } from '../../src/config/index.js';
 
 const base = {
   DATABASE_URL: 'postgres://u:p@localhost:5432/db',

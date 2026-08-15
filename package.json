@@ -8,7 +8,7 @@
   },
   "scripts": {
     "test": "vitest run",
-    "build": "tsc",
+    "build": "tsc -p tsconfig.build.json",
     "dev:api": "tsx watch src/server.ts",
     "dev:worker": "tsx watch src/worker.ts",
     "start:api": "tsx src/server.ts",

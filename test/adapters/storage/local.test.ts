@@ -1,7 +1,7 @@
 import { describe, it, expect, afterAll } from 'vitest';
 import { Readable } from 'node:stream';
 import { rm } from 'node:fs/promises';
-import { LocalStorage } from './local.js';
+import { LocalStorage } from '../../../src/adapters/storage/local.js';
 
 const dir = './.tmp-storage-test';
 afterAll(async () => { await rm(dir, { recursive: true, force: true }); });

@@ -1,5 +1,5 @@
 import { describe, it, expect, afterAll } from 'vitest';
-import { pool } from './pool.js';
+import { pool } from '../../src/db/pool.js';
 
 afterAll(async () => { await pool.end(); });
 

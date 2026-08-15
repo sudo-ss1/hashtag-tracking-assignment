@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest';
 import request from 'supertest';
-import { pool, withTransaction } from '../db/pool.js';
-import { upsertMedia, linkHashtagMedia } from '../db/repositories/media.repository.js';
-import { buildApp } from '../server.js';
+import { pool, withTransaction } from '../../src/db/pool.js';
+import { upsertMedia, linkHashtagMedia } from '../../src/db/repositories/media.repository.js';
+import { buildApp } from '../../src/server.js';
 
 const app = buildApp();
 

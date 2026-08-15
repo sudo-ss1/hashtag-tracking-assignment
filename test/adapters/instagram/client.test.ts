@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import { InstagramClient } from './client.js';
-import { config } from '../../config/index.js';
+import { InstagramClient } from '../../../src/adapters/instagram/client.js';
+import { config } from '../../../src/config/index.js';
 
 const media = (id: string) => ({
   id, media_type: 'IMAGE', timestamp: '2026-08-13T15:13:39+0000', permalink: `https://x/${id}`,

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { encodeCursor, decodeCursor } from './cursor.js';
+import { encodeCursor, decodeCursor } from '../../src/api/cursor.js';
 
 describe('cursor', () => {
   it('round-trips a timestamp and id', () => {
