@@ -10,6 +10,7 @@ coverage/
 
 # local storage driver output (repo-root only — do not shadow src/**/storage)
 /storage/
+/.tmp-e2e-storage/
 *.log
 .DS_Store
 
