@@ -12,3 +12,5 @@ coverage/
 storage/
 *.log
 .DS_Store
+
+.superpowers/
