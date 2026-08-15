@@ -52,12 +52,18 @@ Run the test suite with:
 npm test
 ```
 
-52 tests, all passing. Tests seed their own rows under dedicated hashtag
+55 tests, all passing. Tests seed their own rows under dedicated hashtag
 names, so they stay green even with live `matcha` data already in the table
-(see `tradeoffs`).
+(see `tradeoffs`). Tests live in a top-level `test/` directory mirroring
+`src/`; `tsconfig.json` typechecks both `src` and `test`, while
+`tsconfig.build.json` builds only `src`. Notably, `test/e2e/pipeline.test.ts`
+drives the full pipeline end to end — fake Graph response → sync → upsert →
+enqueue → download → storage → `GET /hashtags` — with no network calls.
 
 Other scripts of note: `npm run dev:api` / `npm run dev:worker` (watch mode),
-`npm run build` (typecheck via `tsc`).
+`npm run build` (runs `tsc -p tsconfig.build.json`, emitting compiled output
+to `dist/` — it builds, it does not just typecheck). To typecheck everything
+including tests without emitting, use `npx tsc --noEmit`.
 
 ## vars
 

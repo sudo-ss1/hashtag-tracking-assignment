@@ -2,7 +2,7 @@
 
 This is an account of how the assignment was actually built, and what that
 process caught. The git history is the authoritative record of what was written —
-19 commits, each ending in a passing test suite.
+each commit ending in a passing test suite.
 
 ## How the assignment was built
 
